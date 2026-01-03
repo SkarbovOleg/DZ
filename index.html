@@ -330,6 +330,21 @@
             line-height: 1.5;
         }
         
+        .audio-warning {
+            background: rgba(255, 193, 7, 0.1);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #ffd54f;
+        }
+        
+        .audio-warning i {
+            color: #ffc107;
+            margin-right: 10px;
+        }
+        
         .footer {
             text-align: center;
             margin-top: 60px;
@@ -435,6 +450,14 @@
                             <div class="volume-level" id="volume-level"></div>
                         </div>
                     </div>
+                    
+                    <div class="audio-warning" id="audio-warning" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <span id="warning-text">Для прослушивания на сайте необходимо скачать файл</span>
+                    </div>
+                    
+                    <!-- Скрытый iframe для обхода CORS -->
+                    <iframe id="audio-frame" style="display: none;"></iframe>
                 </section>
                 
                 <section class="download-section">
@@ -503,7 +526,7 @@
         
         <footer class="footer">
             <p>© 2023 Goose Music. Все права на музыку защищены.</p>
-            <p>Это демонстрационный сайт. Для прослушивания используется аудиодорожка с YouTube.</p>
+            <p>Для прослушивания на сайте используйте кнопку "Смотреть на YouTube" или скачайте файл.</p>
             <div class="footer-links">
                 <a href="#" id="contact-link">Контакты</a>
                 <a href="#" id="about-link">О проекте</a>
@@ -524,6 +547,8 @@
         const totalTimeEl = document.getElementById('total-time');
         const volumeSlider = document.getElementById('volume-slider');
         const volumeLevel = document.getElementById('volume-level');
+        const audioWarning = document.getElementById('audio-warning');
+        const warningText = document.getElementById('warning-text');
         
         // Кнопки скачивания
         const downloadHigh = document.getElementById('download-high');
@@ -531,12 +556,23 @@
         const downloadLow = document.getElementById('download-low');
         
         // ==== ВАШИ ССЫЛКИ ИЗ GOOGLE DRIVE ====
-        // Преобразуем вашу ссылку в прямую ссылку для скачивания
-        // Исходная: https://drive.google.com/file/d/1ZHFbwv8NMkVyj78NJs4SNbq_Cp9mMDM5/view?usp=drive_link
-        // Прямая для скачивания: https://drive.google.com/uc?export=download&id=1ZHFbwv8NMkVyj78NJs4SNbq_Cp9mMDM5
-        
         const fileId = "1ZHFbwv8NMkVyj78NJs4SNbq_Cp9mMDM5";
+        
+        // Прямая ссылка для скачивания
         const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        
+        // Альтернативные ссылки (попробуем разные варианты)
+        const audioSources = [
+            // Основная прямая ссылка
+            directDownloadLink,
+            // Альтернативный формат
+            `https://docs.google.com/uc?export=download&id=${fileId}`,
+            // Еще один вариант
+            `https://drive.google.com/file/d/${fileId}/view?usp=sharing`
+        ];
+        
+        let currentSourceIndex = 0;
+        let audioLoaded = false;
         
         const downloadLinks = {
             highQuality: directDownloadLink,
@@ -544,17 +580,13 @@
             lowQuality: directDownloadLink
         };
         
-        // Прямая ссылка на аудио для плеера
-        const audioSource = directDownloadLink;
-        
         // Инициализация плеера
         function initPlayer() {
-            // Устанавливаем источник аудио
-            audioPlayer.src = audioSource;
-            audioPlayer.volume = 0.7;
-            audioPlayer.preload = "metadata"; // Загружаем метаданные
+            // Пытаемся загрузить аудио из первого источника
+            tryLoadAudioSource(currentSourceIndex);
             
             // Устанавливаем начальную громкость
+            audioPlayer.volume = 0.7;
             updateVolumeDisplay();
             
             // Обновляем информацию о песне
@@ -562,9 +594,11 @@
             
             // Событие при загрузке метаданных
             audioPlayer.addEventListener('loadedmetadata', function() {
+                audioLoaded = true;
                 updateSongInfo();
                 updateTimeDisplay();
-                console.log("Длительность трека:", audioPlayer.duration, "секунд");
+                console.log("Аудио загружено, длительность:", audioPlayer.duration, "секунд");
+                hideWarning();
             });
             
             // Событие при изменении времени воспроизведения
@@ -578,14 +612,16 @@
             
             // Событие при ошибке загрузки
             audioPlayer.addEventListener('error', function(e) {
-                console.error("Ошибка загрузки аудио:", audioPlayer.error);
+                console.error("Ошибка загрузки аудио из источника", currentSourceIndex, ":", audioPlayer.error);
                 
-                // Попробуем альтернативный метод загрузки
-                if (audioPlayer.error && audioPlayer.error.code === 4) {
-                    alert("Не удалось загрузить аудио напрямую. Попробуйте скачать файл через кнопку скачивания.");
-                    
-                    // Показываем инструкцию
-                    document.getElementById('song-duration').textContent = "Для прослушивания скачайте файл";
+                // Пробуем следующий источник
+                currentSourceIndex++;
+                if (currentSourceIndex < audioSources.length) {
+                    console.log("Пробуем источник", currentSourceIndex);
+                    tryLoadAudioSource(currentSourceIndex);
+                } else {
+                    // Все источники не работают
+                    showWarning("Не удалось загрузить аудио для прямого воспроизведения. Используйте кнопку 'Смотреть на YouTube' или скачайте файл.");
                     playBtn.disabled = true;
                 }
             });
@@ -594,7 +630,31 @@
             audioPlayer.addEventListener('canplay', function() {
                 console.log("Аудио готово к воспроизведению");
                 playBtn.disabled = false;
+                hideWarning();
             });
+        }
+        
+        // Попытка загрузить аудио из определенного источника
+        function tryLoadAudioSource(index) {
+            if (index >= audioSources.length) return;
+            
+            console.log("Загрузка аудио из источника:", audioSources[index]);
+            audioPlayer.src = audioSources[index];
+            audioPlayer.load();
+            
+            // Показываем сообщение о загрузке
+            showWarning("Загрузка аудио...");
+        }
+        
+        // Показать предупреждение
+        function showWarning(text) {
+            warningText.textContent = text;
+            audioWarning.style.display = 'block';
+        }
+        
+        // Скрыть предупреждение
+        function hideWarning() {
+            audioWarning.style.display = 'none';
         }
         
         // Обновление информации о песне
@@ -613,6 +673,8 @@
         
         // Обновление прогресса воспроизведения
         function updateProgress() {
+            if (!audioLoaded) return;
+            
             const { currentTime, duration } = audioPlayer;
             if (duration && duration > 0) {
                 const progressPercent = (currentTime / duration) * 100;
@@ -625,6 +687,8 @@
         
         // Обновление отображения времени
         function updateTimeDisplay() {
+            if (!audioLoaded) return;
+            
             const current = audioPlayer.currentTime;
             const duration = audioPlayer.duration || 180;
             
@@ -640,6 +704,8 @@
         
         // Перемотка при клике на прогресс-бар
         progressContainer.addEventListener('click', function(e) {
+            if (!audioLoaded) return;
+            
             const width = this.clientWidth;
             const clickX = e.offsetX;
             const duration = audioPlayer.duration;
@@ -651,18 +717,41 @@
         
         // Управление воспроизведением
         playBtn.addEventListener('click', function() {
+            if (!audioLoaded) {
+                // Если аудио не загружено, предлагаем альтернативы
+                const choice = confirm("Аудио не загружено для прямого воспроизведения. Хотите:\n\n1. Открыть на YouTube (ОК)\n2. Скачать файл (Отмена)");
+                
+                if (choice) {
+                    // Открываем YouTube
+                    window.open('https://youtu.be/IAsELUhf1f0?si=vY7O00i4Khj5OPwB', '_blank');
+                } else {
+                    // Скачиваем файл
+                    downloadFile(directDownloadLink, 'Goose_Music_Трек.mp3');
+                }
+                return;
+            }
+            
             if (audioPlayer.paused) {
                 audioPlayer.play().then(() => {
                     playIcon.className = 'fas fa-pause';
                     playBtn.classList.add('playing');
+                    hideWarning();
                 }).catch(error => {
                     console.error("Ошибка воспроизведения:", error);
                     
-                    // Пробуем альтернативный метод
-                    const confirmDownload = confirm("Не удалось воспроизвести аудио напрямую. Хотите скачать файл?");
-                    if (confirmDownload) {
-                        downloadFile(directDownloadLink, 'Goose_Music_Трек.mp3');
-                    }
+                    // Пробуем альтернативный метод - открываем в новой вкладке
+                    showWarning("Прямое воспроизведение заблокировано. Открываю аудио в новой вкладке...");
+                    
+                    setTimeout(() => {
+                        const audioFrame = document.getElementById('audio-frame');
+                        audioFrame.src = audioSources[0];
+                        
+                        // Альтернатива - скачивание
+                        const confirmDownload = confirm("Не удалось воспроизвести аудио. Хотите скачать файл?");
+                        if (confirmDownload) {
+                            downloadFile(directDownloadLink, 'Goose_Music_Трек.mp3');
+                        }
+                    }, 1000);
                 });
             } else {
                 audioPlayer.pause();
@@ -725,7 +814,6 @@
             setTimeout(() => {
                 this.innerHTML = originalHTML;
                 this.disabled = false;
-                alert("Скачивание началось! Проверьте папку 'Загрузки' на вашем компьютере.");
             }, 2000);
         });
         
@@ -745,7 +833,6 @@
             setTimeout(() => {
                 this.innerHTML = originalHTML;
                 this.disabled = false;
-                alert("Скачивание началось! Проверьте папку 'Загрузки' на вашем компьютере.");
             }, 2000);
         });
         
@@ -765,7 +852,6 @@
             setTimeout(() => {
                 this.innerHTML = originalHTML;
                 this.disabled = false;
-                alert("Скачивание началось! Проверьте папку 'Загрузки' на вашем компьютере.");
             }, 2000);
         });
         
@@ -808,6 +894,13 @@
             
             console.log("Ссылка для скачивания:", directDownloadLink);
             console.log("ID файла:", fileId);
+            
+            // Показываем инструкцию
+            setTimeout(() => {
+                if (!audioLoaded) {
+                    showWarning("Загрузка аудио... Если музыка не загружается, используйте кнопку 'Смотреть на YouTube' или скачайте файл.");
+                }
+            }, 2000);
         });
     </script>
 </body>
