@@ -525,22 +525,34 @@
         const volumeSlider = document.getElementById('volume-slider');
         const volumeLevel = document.getElementById('volume-level');
         
-        // Информация о песне
-        const songTitle = document.getElementById('song-title');
-        const songArtist = document.getElementById('song-artist');
-        const songDuration = document.getElementById('song-duration');
-        
         // Кнопки скачивания
         const downloadHigh = document.getElementById('download-high');
         const downloadMedium = document.getElementById('download-medium');
         const downloadLow = document.getElementById('download-low');
         
+        // ==== ВАШИ ССЫЛКИ ИЗ GOOGLE DRIVE ====
+        // Преобразуем вашу ссылку в прямую ссылку для скачивания
+        // Исходная: https://drive.google.com/file/d/1ZHFbwv8NMkVyj78NJs4SNbq_Cp9mMDM5/view?usp=drive_link
+        // Прямая для скачивания: https://drive.google.com/uc?export=download&id=1ZHFbwv8NMkVyj78NJs4SNbq_Cp9mMDM5
+        
+        const fileId = "1ZHFbwv8NMkVyj78NJs4SNbq_Cp9mMDM5";
+        const directDownloadLink = `https://drive.google.com/uc?export=download&id=${fileId}`;
+        
+        const downloadLinks = {
+            highQuality: directDownloadLink,
+            mediumQuality: directDownloadLink, 
+            lowQuality: directDownloadLink
+        };
+        
+        // Прямая ссылка на аудио для плеера
+        const audioSource = directDownloadLink;
+        
         // Инициализация плеера
         function initPlayer() {
-            // Устанавливаем источник аудио (здесь используется аудио с YouTube)
-            // В реальном проекте нужно иметь прямую ссылку на аудиофайл
-            audioPlayer.src = 'https://www.youtube.com/audiolibrary_download?vid=IAsELUhf1f0';
+            // Устанавливаем источник аудио
+            audioPlayer.src = audioSource;
             audioPlayer.volume = 0.7;
+            audioPlayer.preload = "metadata"; // Загружаем метаданные
             
             // Устанавливаем начальную громкость
             updateVolumeDisplay();
@@ -552,6 +564,7 @@
             audioPlayer.addEventListener('loadedmetadata', function() {
                 updateSongInfo();
                 updateTimeDisplay();
+                console.log("Длительность трека:", audioPlayer.duration, "секунд");
             });
             
             // Событие при изменении времени воспроизведения
@@ -563,36 +576,51 @@
                 playBtn.classList.remove('playing');
             });
             
-            // В реальном проекте здесь нужно получить реальную длительность трека
-            // Пока устанавливаем предполагаемую длительность
-            setTimeout(() => {
-                updateSongInfo();
-            }, 1000);
+            // Событие при ошибке загрузки
+            audioPlayer.addEventListener('error', function(e) {
+                console.error("Ошибка загрузки аудио:", audioPlayer.error);
+                
+                // Попробуем альтернативный метод загрузки
+                if (audioPlayer.error && audioPlayer.error.code === 4) {
+                    alert("Не удалось загрузить аудио напрямую. Попробуйте скачать файл через кнопку скачивания.");
+                    
+                    // Показываем инструкцию
+                    document.getElementById('song-duration').textContent = "Для прослушивания скачайте файл";
+                    playBtn.disabled = true;
+                }
+            });
+            
+            // Событие при успешной загрузке
+            audioPlayer.addEventListener('canplay', function() {
+                console.log("Аудио готово к воспроизведению");
+                playBtn.disabled = false;
+            });
         }
         
         // Обновление информации о песне
         function updateSongInfo() {
-            const duration = audioPlayer.duration || 180; // По умолчанию 3 минуты, если не удалось получить
+            const duration = audioPlayer.duration || 180;
             const minutes = Math.floor(duration / 60);
             const seconds = Math.floor(duration % 60);
             
-            songDuration.textContent = `Длительность: ${minutes}:${seconds.toString().padStart(2, '0')}`;
+            document.getElementById('song-duration').textContent = `Длительность: ${minutes}:${seconds.toString().padStart(2, '0')}`;
             totalTimeEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
             
-            // В реальном проекте здесь можно получать название и артиста из метаданных
-            songTitle.textContent = "Моя песня";
-            songArtist.textContent = "Goose Music";
+            // Устанавливаем название песни
+            document.getElementById('song-title').textContent = "Моя песня";
+            document.getElementById('song-artist').textContent = "Goose Music";
         }
         
         // Обновление прогресса воспроизведения
         function updateProgress() {
             const { currentTime, duration } = audioPlayer;
-            const progressPercent = (currentTime / duration) * 100;
-            
-            progressBar.style.width = `${progressPercent}%`;
-            
-            // Обновляем отображение времени
-            updateTimeDisplay();
+            if (duration && duration > 0) {
+                const progressPercent = (currentTime / duration) * 100;
+                progressBar.style.width = `${progressPercent}%`;
+                
+                // Обновляем отображение времени
+                updateTimeDisplay();
+            }
         }
         
         // Обновление отображения времени
@@ -616,15 +644,26 @@
             const clickX = e.offsetX;
             const duration = audioPlayer.duration;
             
-            audioPlayer.currentTime = (clickX / width) * duration;
+            if (duration && duration > 0) {
+                audioPlayer.currentTime = (clickX / width) * duration;
+            }
         });
         
         // Управление воспроизведением
         playBtn.addEventListener('click', function() {
             if (audioPlayer.paused) {
-                audioPlayer.play();
-                playIcon.className = 'fas fa-pause';
-                playBtn.classList.add('playing');
+                audioPlayer.play().then(() => {
+                    playIcon.className = 'fas fa-pause';
+                    playBtn.classList.add('playing');
+                }).catch(error => {
+                    console.error("Ошибка воспроизведения:", error);
+                    
+                    // Пробуем альтернативный метод
+                    const confirmDownload = confirm("Не удалось воспроизвести аудио напрямую. Хотите скачать файл?");
+                    if (confirmDownload) {
+                        downloadFile(directDownloadLink, 'Goose_Music_Трек.mp3');
+                    }
+                });
             } else {
                 audioPlayer.pause();
                 playIcon.className = 'fas fa-play';
@@ -636,7 +675,7 @@
         volumeSlider.addEventListener('click', function(e) {
             const width = this.clientWidth;
             const clickX = e.offsetX;
-            const volume = clickX / width;
+            const volume = Math.min(1, Math.max(0, clickX / width));
             
             audioPlayer.volume = volume;
             updateVolumeDisplay();
@@ -648,76 +687,89 @@
             volumeLevel.style.width = `${volume * 100}%`;
         }
         
-        // Функции для кнопок скачивания
-        // В реальном проекте здесь должны быть реальные ссылки на файлы
-        function simulateDownload(quality) {
-            // Эмуляция процесса скачивания
-            const originalText = event.target.closest('.download-btn').querySelector('div span').textContent;
-            const btn = event.target.closest('.download-btn');
+        // Функция для скачивания файла
+        function downloadFile(url, fileName) {
+            // Создаем временную ссылку для скачивания
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName || 'Goose_Music_Трек.mp3';
+            link.target = '_blank';
             
-            btn.innerHTML = `
-                <div>
-                    <i class="fas fa-spinner fa-spin"></i>
-                    <span>Скачивание... ${quality}</span>
-                </div>
-                <span class="size">~0 MB</span>
-            `;
+            // Добавляем на страницу и кликаем
+            document.body.appendChild(link);
+            link.click();
             
-            btn.style.background = 'rgba(77, 171, 247, 0.5)';
-            
-            // Имитация загрузки
+            // Удаляем ссылку
             setTimeout(() => {
-                btn.innerHTML = `
-                    <div>
-                        <i class="fas fa-check"></i>
-                        <span>Скачано! ${quality}</span>
-                    </div>
-                    <span class="size">✓</span>
-                `;
-                btn.style.background = 'rgba(46, 204, 113, 0.3)';
-                
-                // Возвращаем исходный вид через 3 секунды
-                setTimeout(() => {
-                    if (quality === '320 kbps') {
-                        btn.innerHTML = `
-                            <div>
-                                <i class="fas fa-file-audio"></i>
-                                <span>Высокое качество <span class="quality">(320 kbps)</span></span>
-                            </div>
-                            <span class="size">~8 MB</span>
-                        `;
-                    } else if (quality === '192 kbps') {
-                        btn.innerHTML = `
-                            <div>
-                                <i class="fas fa-file-audio"></i>
-                                <span>Среднее качество <span class="quality">(192 kbps)</span></span>
-                            </div>
-                            <span class="size">~5 MB</span>
-                        `;
-                    } else {
-                        btn.innerHTML = `
-                            <div>
-                                <i class="fas fa-file-audio"></i>
-                                <span>Низкое качество <span class="quality">(128 kbps)</span></span>
-                            </div>
-                            <span class="size">~3 MB</span>
-                        `;
-                    }
-                    
-                    btn.style.background = 'rgba(255, 255, 255, 0.1)';
-                    
-                    // Показываем сообщение об успешном скачивании
-                    alert(`Трек скачан в качестве ${quality}. В реальном проекте здесь началось бы скачивание файла.`);
-                }, 2000);
-            }, 1500);
+                document.body.removeChild(link);
+            }, 100);
         }
         
-        // Назначение обработчиков для кнопок скачивания
-        downloadHigh.addEventListener('click', () => simulateDownload('320 kbps'));
-        downloadMedium.addEventListener('click', () => simulateDownload('192 kbps'));
-        downloadLow.addEventListener('click', () => simulateDownload('128 kbps'));
+        // Обработчики для кнопок скачивания
+        downloadHigh.addEventListener('click', function() {
+            // Показываем состояние загрузки
+            const originalHTML = this.innerHTML;
+            this.innerHTML = `
+                <div>
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Скачивание... 320 kbps</span>
+                </div>
+                <span class="size">...</span>
+            `;
+            this.disabled = true;
+            
+            // Скачиваем файл
+            downloadFile(downloadLinks.highQuality, 'Goose_Music_ВысокоеКачество.mp3');
+            
+            // Возвращаем исходный вид через 2 секунды
+            setTimeout(() => {
+                this.innerHTML = originalHTML;
+                this.disabled = false;
+                alert("Скачивание началось! Проверьте папку 'Загрузки' на вашем компьютере.");
+            }, 2000);
+        });
         
-        // Кнопки навигации (в будущем можно добавить больше песен)
+        downloadMedium.addEventListener('click', function() {
+            const originalHTML = this.innerHTML;
+            this.innerHTML = `
+                <div>
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Скачивание... 192 kbps</span>
+                </div>
+                <span class="size">...</span>
+            `;
+            this.disabled = true;
+            
+            downloadFile(downloadLinks.mediumQuality, 'Goose_Music_СреднееКачество.mp3');
+            
+            setTimeout(() => {
+                this.innerHTML = originalHTML;
+                this.disabled = false;
+                alert("Скачивание началось! Проверьте папку 'Загрузки' на вашем компьютере.");
+            }, 2000);
+        });
+        
+        downloadLow.addEventListener('click', function() {
+            const originalHTML = this.innerHTML;
+            this.innerHTML = `
+                <div>
+                    <i class="fas fa-spinner fa-spin"></i>
+                    <span>Скачивание... 128 kbps</span>
+                </div>
+                <span class="size">...</span>
+            `;
+            this.disabled = true;
+            
+            downloadFile(downloadLinks.lowQuality, 'Goose_Music_НизкоеКачество.mp3');
+            
+            setTimeout(() => {
+                this.innerHTML = originalHTML;
+                this.disabled = false;
+                alert("Скачивание началось! Проверьте папку 'Загрузки' на вашем компьютере.");
+            }, 2000);
+        });
+        
+        // Кнопки навигации
         document.getElementById('prev-btn').addEventListener('click', function() {
             alert('Это единственный трек на данный момент. Скоро добавятся новые!');
         });
@@ -753,6 +805,9 @@
         document.addEventListener('DOMContentLoaded', function() {
             initPlayer();
             setCurrentDate();
+            
+            console.log("Ссылка для скачивания:", directDownloadLink);
+            console.log("ID файла:", fileId);
         });
     </script>
 </body>
